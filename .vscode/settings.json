@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "stdio.h": "c",
+        "esp_spi_flash.h": "c",
+        "sdkconfig.h": "c",
+        "task.h": "c",
+        "esp_err.h": "c",
+        "pwm.h": "c",
+        "jsmn.h": "c"
+    }
+}
