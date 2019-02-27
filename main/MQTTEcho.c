@@ -59,6 +59,16 @@ const int CONNECTED_BIT = BIT0;
 #define PWM_PIN_GREEN    14
 #define PWM_PERIOD    (500)
 
+#define TRUE_S  "True"
+
+typedef struct {
+    uint8_t r, g, b;
+    bool is_on;
+    bool is_sensor_on;
+} led_params_s;
+
+led_params_s led_param;
+
 const uint32_t pin_num[3] = {
     PWM_PIN_GREEN,
     PWM_PIN_BLUE,
@@ -74,8 +84,6 @@ uint32_t duties[] = {
 int16_t phase[] = {
     0, 0, 0
 };
-
-//"{"r": "255", "g": "255", "b": "255", "forced": 0}"
 
 char json_buff[BUFF_LEN] = {0};
 
@@ -101,6 +109,7 @@ static const char *TAG = "example";
 static QueueHandle_t RawJson;
 static char* data;
 
+static char* test_str = "{\"r\": 128, \"g\": 200, \"b\": 50, \"is_on\": True, \"sensor\": False}";
 
 static esp_err_t event_handler(void *ctx, system_event_t *event)
 {
@@ -179,6 +188,76 @@ static void messageArrived(MessageData *data)
     {
         ESP_LOGI(TAG, "SENT!");
     }
+}
+
+static bool str_to_bool(char* start, size_t len)
+{
+    return !(bool) strncmp(TRUE_S, start, len);
+}
+
+static uint8_t process_json(char * text)
+{
+    size_t i;
+	int r;
+	jsmn_parser p;
+	jsmntok_t t[128]; /* We expect no more than 128 tokens */
+
+	jsmn_init(&p);
+	r = jsmn_parse(&p, text, strlen(text), t, sizeof(t)/sizeof(t[0]));
+	if (r < 0) {
+		ESP_LOGE(TAG, "Failed to parse JSON: %d\n", r);
+		return 1;
+	}
+
+	/* Assume the top-level element is an object */
+	if (r < 1 || t[0].type != JSMN_OBJECT) {
+		ESP_LOGE(TAG, "Object expected\n");
+		return 2;
+	}
+
+	/* Loop over all keys of the root object */
+	for (i = 1; i < r; i++) {
+		if (jsoneq(text, &t[i], "r") == 0) {
+			/* We may use strndup() to fetch string value */
+            led_param.r = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
+			ESP_LOGD(TAG, "Red: %d\n", led_param.r);
+			i++;
+            }
+		else if (jsoneq(text, &t[i], "g") == 0) {
+			/* We may use strndup() to fetch string value */
+            led_param.g = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
+			ESP_LOGD(TAG, "Green: %d", led_param.g);
+			i++;
+            }
+		else if (jsoneq(text, &t[i], "b") == 0) {
+			/* We may use strndup() to fetch string value */
+            led_param.b = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
+			ESP_LOGD(TAG, "Blue: %d\n", led_param.b);
+			i++;
+            }
+		else if (jsoneq(text, &t[i], "is_on") == 0) {
+			/* We may use strndup() to fetch string value */
+            led_param.is_on = str_to_bool(text + t[i+1].start, t[i+1].end-t[i+1].start);
+
+			ESP_LOGD(TAG, "is_on: %d\n", led_param.is_on);
+			i++;
+            }
+        else if (jsoneq(text, &t[i], "sensor") == 0) {
+			/* We may use strndup() to fetch string value */
+            led_param.is_sensor_on = str_to_bool(text + t[i+1].start, t[i+1].end-t[i+1].start);
+			ESP_LOGD(TAG, "sensor: %d\n", led_param.is_sensor_on);
+			i++;
+            } 
+        else {
+			ESP_LOGE(TAG, "Unexpected key: %.*s\n", t[i].end-t[i].start,
+					text + t[i].start);
+            return 3;
+		    }
+    }
+
+    // ESP_LOGI(TAG, "r=%d\ng=%d\nb=%d\nis_on=%d\nis_sensor=%d", led_param.r, led_param.g, led_param.b, led_param.is_on, led_param.is_sensor_on);
+    
+    return 0;
 }
 
 void mqtt_client_thread(void *pvParameters)
@@ -340,7 +419,9 @@ void vPrint(void* vParams)
             // }
             // printf("%02x\n", (uint32_t) &json_buff[0]);
             ESP_LOGI(TAG, "Queue receive OK: %s", c);
-            //memset(data, 0, BUFF_LEN);
+
+            process_json(c);
+                      //memset(data, 0, BUFF_LEN);
         }
     }
 
