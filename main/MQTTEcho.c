@@ -156,14 +156,6 @@ static void initialise_wifi(void)
     ESP_ERROR_CHECK(esp_wifi_start());
 }
 
-static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
-        if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
-                        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
-                return 0;
-        }
-        return -1;
-}
-
 static void messageArrived(MessageData *data)
 {
     // ESP_LOGI(TAG, "Message arrived[len:%u]: %.*s", data->message->payloadlen, data->message->payloadlen, (char *)data->message->payload);
@@ -188,6 +180,14 @@ static void messageArrived(MessageData *data)
     {
         ESP_LOGI(TAG, "SENT!");
     }
+}
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s) {
+        if (tok->type == JSMN_STRING && (int) strlen(s) == tok->end - tok->start &&
+                        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+                return 0;
+        }
+        return -1;
 }
 
 static bool str_to_bool(char* start, size_t len)
@@ -219,33 +219,32 @@ static uint8_t process_json(char * text)
 	for (i = 1; i < r; i++) {
 		if (jsoneq(text, &t[i], "r") == 0) {
 			/* We may use strndup() to fetch string value */
-            led_param.r = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
-			ESP_LOGD(TAG, "Red: %d\n", led_param.r);
+            led_param.r = (uint8_t) strtol(text + t[i+1].start, NULL, 10);
+			ESP_LOGI(TAG, "Red: %d", led_param.r);
 			i++;
             }
 		else if (jsoneq(text, &t[i], "g") == 0) {
 			/* We may use strndup() to fetch string value */
-            led_param.g = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
-			ESP_LOGD(TAG, "Green: %d", led_param.g);
+            led_param.g = (uint8_t) strtol(text + t[i+1].start, NULL, 10);
+			ESP_LOGI(TAG, "Green: %d", led_param.g);
 			i++;
             }
 		else if (jsoneq(text, &t[i], "b") == 0) {
 			/* We may use strndup() to fetch string value */
-            led_param.b = (uint8_t) strtol(text + t[i+1].start, t[i+1].end-t[i+1].start, 10);
-			ESP_LOGD(TAG, "Blue: %d\n", led_param.b);
+            led_param.b = (uint8_t) strtol(text + t[i+1].start, NULL, 10);
+			ESP_LOGI(TAG, "Blue: %d", led_param.b);
 			i++;
             }
 		else if (jsoneq(text, &t[i], "is_on") == 0) {
 			/* We may use strndup() to fetch string value */
             led_param.is_on = str_to_bool(text + t[i+1].start, t[i+1].end-t[i+1].start);
-
-			ESP_LOGD(TAG, "is_on: %d\n", led_param.is_on);
+			ESP_LOGI(TAG, "is_on: %d", led_param.is_on);
 			i++;
             }
         else if (jsoneq(text, &t[i], "sensor") == 0) {
 			/* We may use strndup() to fetch string value */
             led_param.is_sensor_on = str_to_bool(text + t[i+1].start, t[i+1].end-t[i+1].start);
-			ESP_LOGD(TAG, "sensor: %d\n", led_param.is_sensor_on);
+			ESP_LOGI(TAG, "sensor: %d", led_param.is_sensor_on);
 			i++;
             } 
         else {
@@ -254,6 +253,7 @@ static uint8_t process_json(char * text)
             return 3;
 		    }
     }
+    
 
     // ESP_LOGI(TAG, "r=%d\ng=%d\nb=%d\nis_on=%d\nis_sensor=%d", led_param.r, led_param.g, led_param.b, led_param.is_on, led_param.is_sensor_on);
     
@@ -420,7 +420,11 @@ void vPrint(void* vParams)
             // printf("%02x\n", (uint32_t) &json_buff[0]);
             ESP_LOGI(TAG, "Queue receive OK: %s", c);
 
-            process_json(c);
+            rc = process_json(c);
+            ESP_LOGI(TAG, "Parser rc %d", rc);
+
+            ESP_LOGI(TAG, "lowes space %ld", uxTaskGetStackHighWaterMark(NULL));
+            
                       //memset(data, 0, BUFF_LEN);
         }
     }
