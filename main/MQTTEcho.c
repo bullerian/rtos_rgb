@@ -35,6 +35,7 @@
 #include "esp8266/pin_mux_register.h"
 
 #include "driver/pwm.h"
+#include "driver/adc.h"
 
 #include "MQTTClient.h"
 
@@ -458,6 +459,18 @@ void vPrint(void* vParams)
     }
 }
 
+void vLight(void* args)
+{
+    uint16_t raw;
+
+    while(1)
+    {
+        raw = adc_read();
+        ESP_LOGI(TAG, "Raw %d", raw);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
 void app_main(void)
 {
     // Initialize NVS
@@ -507,6 +520,7 @@ void app_main(void)
 
     // ret = xTaskCreate(&vBlink, "Blink1", 2048, NULL, 2, NULL);
     ret = xTaskCreate(&vLed, "PWM", 2048, NULL, 8, NULL);
+    ret = xTaskCreate(&vLight, "Light", configMINIMAL_STACK_SIZE, NULL, 9, NULL);
     ret = xTaskCreate(&vPrint, "Print1", 2048 * 2, NULL, 9, NULL);
 
     ret = xTaskCreate(&mqtt_client_thread,
