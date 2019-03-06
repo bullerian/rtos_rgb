@@ -54,22 +54,23 @@ const int CONNECTED_BIT = BIT0;
 #define PIN_STATE 2
 #define BUFF_LEN 100
 
+#define PWM_PIN_COUNT    3
 #define PWM_PIN_RED      15
 #define PWM_PIN_BLUE     12
 #define PWM_PIN_GREEN    14
-#define PWM_PERIOD    (500)
+#define PWM_PERIOD       (500)
 
 #define TRUE_S  "True"
 
 typedef struct {
-    uint8_t r, g, b;
+    uint8_t g, b, r;
     bool is_on;
     bool is_sensor_on;
 } led_params_s;
 
 led_params_s led_param;
 
-const uint32_t pin_num[3] = {
+const uint32_t pin_num[PWM_PIN_COUNT] = {
     PWM_PIN_GREEN,
     PWM_PIN_BLUE,
     PWM_PIN_RED
@@ -84,6 +85,8 @@ uint32_t duties[] = {
 int16_t phase[] = {
     0, 0, 0
 };
+
+TaskHandle_t PWMTask;
 
 char json_buff[BUFF_LEN] = {0};
 
@@ -376,27 +379,47 @@ void vBlink(void* vParams)
 void vLed(void *arg){
     uint8_t i = 0;
     uint8_t ctr = 0;
-    pwm_init(PWM_PERIOD, duties, 3, pin_num);
+    uint32_t xEvent = 0;
+
+    PWMTask = xTaskGetCurrentTaskHandle();
+    pwm_init(PWM_PERIOD, duties, PWM_PIN_COUNT, pin_num);
     pwm_set_phases(phase);
 
     pwm_start();
 
     while(1){
-        vTaskDelay(pdMS_TO_TICKS(10));
-        if(ctr != 255){
-            duties[i] = gamma_table[ctr++];
-            pwm_set_duties(duties);
-        } else {
-            ESP_LOGI(TAG, "Clearing duties. G=%d B=%d R=%d", duties[0], duties[1], duties[2]);
-            duties[i] = 0;
-            ctr = 0;
-            pwm_set_duties(duties);
-            i++;
-            if(i >= 3){
-                i = 0;
+        ESP_LOGI(TAG, "Waiting for event");
+        xEvent = ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        
+        if(xEvent)
+        {
+            ESP_LOGI(TAG, "PWM task got event");
+            for(i = 0; i < PWM_PIN_COUNT; i++)
+            {
+                ESP_LOGI(TAG, "Setting gamma %d", gamma_table[*(((uint8_t*) &led_param) + i)]);
+                duties[i] = gamma_table[*(((uint8_t*) &led_param) + i)];
             }
+            pwm_set_duties(duties);
+            pwm_start();
+        } else {
+            ESP_LOGI(TAG, "No event");
         }
-        pwm_start();
+
+        // vTaskDelay(pdMS_TO_TICKS(10));
+        // if(ctr != 255){
+        //     duties[i] = gamma_table[ctr++];
+        //     pwm_set_duties(duties);
+        // } else {
+        //     ESP_LOGI(TAG, "Clearing duties. G=%d B=%d R=%d", duties[0], duties[1], duties[2]);
+        //     duties[i] = 0;
+        //     ctr = 0;
+        //     pwm_set_duties(duties);
+        //     i++;
+        //     if(i >= 3){
+        //         i = 0;
+        //     }
+        // }
+        // pwm_start();
     }
 }
 
@@ -421,15 +444,18 @@ void vPrint(void* vParams)
             ESP_LOGI(TAG, "Queue receive OK: %s", c);
 
             rc = process_json(c);
-            ESP_LOGI(TAG, "Parser rc %d", rc);
+            if (!rc)
+            {
+                ESP_LOGI(TAG, "Setting event");
+                xTaskNotifyGive(PWMTask);
+                // xTaskNotify(PWMTask, 0, eNoAction);
+            }
 
             ESP_LOGI(TAG, "lowes space %ld", uxTaskGetStackHighWaterMark(NULL));
             
                       //memset(data, 0, BUFF_LEN);
         }
     }
-
-
 }
 
 void app_main(void)
@@ -444,7 +470,7 @@ void app_main(void)
 
     ESP_ERROR_CHECK(ret);
 
-    RawJson = xQueueCreate(3, sizeof(char*));
+    RawJson = xQueueCreate(1, sizeof(char*));
     if( RawJson == NULL )
     {
         ESP_LOGE(TAG, "QUEUE creation failed!!!!");
@@ -480,8 +506,8 @@ void app_main(void)
     initialise_wifi();
 
     // ret = xTaskCreate(&vBlink, "Blink1", 2048, NULL, 2, NULL);
-    ret = xTaskCreate(&vPrint, "Print1", 2048 * 2, NULL, 9, NULL);
     ret = xTaskCreate(&vLed, "PWM", 2048, NULL, 8, NULL);
+    ret = xTaskCreate(&vPrint, "Print1", 2048 * 2, NULL, 9, NULL);
 
     ret = xTaskCreate(&mqtt_client_thread,
                       MQTT_CLIENT_THREAD_NAME,
